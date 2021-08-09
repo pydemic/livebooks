@@ -1,0 +1,19 @@
+{
+  "name": "Livebooks",
+  "dockerComposeFile": "docker-compose.yml",
+  "service": "livebook",
+  "workspaceFolder": "/data",
+  "shutdownAction": "none",
+  "extensions": [
+    "albymor.increment-selection",
+    "jakebecker.elixir-ls",
+    "mechatroner.rainbow-csv",
+    "stkb.rewrap"
+  ],
+  "settings": {
+    "editor.quickSuggestions": {
+      "strings": true
+    },
+    "elixirLS.dialyzerEnabled": true
+  }
+}

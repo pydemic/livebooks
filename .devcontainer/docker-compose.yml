@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  livebook:
+    image: pydemic/livebook
+    container_name: livebook
+    environment:
+      LIVEBOOK_IP: '0.0.0.0'
+    volumes:
+      - ..:/data
+      - mix:/root/.mix
+      - vscode:/root/.vscode-server-insiders
+    ports:
+      - 8080:8080
+
+volumes:
+  mix:
+    name: pydemic_livebook_mix
+
+  vscode:
+    name: pydemic_livebook_vscode

@@ -2,10 +2,10 @@ version: '3.8'
 
 services:
   livebook:
-    image: pydemic/livebook
+    image: pydemic/livebook:dev
     container_name: livebook
     environment:
-      LIVEBOOK_IP: '0.0.0.0'
+      LIVEBOOK_PASSWORD: pleasechangeme
     volumes:
       - ..:/data
       - mix:/root/.mix

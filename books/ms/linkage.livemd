@@ -24,9 +24,9 @@ As três bases são arquivos `.csv` (delimitado por `;`) e os arquivos resultant
 
 ## Saída
 
-<!-- livebook:{"livebook_object":"cell_input","name":"Caminho para o diretório de processamento","type":"text","value":"sandbox/pipe"} -->
+<!-- livebook:{"livebook_object":"cell_input","name":"Caminho para o diretório de processamento","type":"text","value":"sandbox/linkage"} -->
 
-<!-- livebook:{"livebook_object":"cell_input","name":"Caminho para o diretório de resultados","type":"text","value":"sandbox/output"} -->
+<!-- livebook:{"livebook_object":"cell_input","name":"Caminho para o diretório de resultados","type":"text","value":"sandbox/results"} -->
 
 ## Identificação dos caminhos
 
@@ -561,6 +561,8 @@ sipni =
     * `#7 sivep_is_death`: `1 | 0`
   * `#140 PCR_SARS2`: `1 | 0`
     * `#5 sivep_is_case`: `1 | 0`
+    * Invalida `#81 HOSPITAL` se valor não for `1`
+    * Invalida `#127 EVOLUCAO` se valor não for `1`
 
 ```elixir
 # Para converter IBGE 6 dígitos para IBGE 7 dígitos
@@ -610,14 +612,16 @@ sivep =
           Phi.FormatUtils.city(city, :cities)
         end
 
+      is_case = if(sars2_result == "1", do: 1, else: 0)
+
       [
         cpf,
         Phi.FormatUtils.date(date, :dd_mm_yyyy),
         city,
         Phi.FormatUtils.age_index(age, :from_18_to_80_by_10),
-        if(sars2_result == "1", do: 1, else: 0),
-        if(hospitalization == "1", do: 1, else: 0),
-        if(death == "2", do: 1, else: 0)
+        is_case,
+        if(is_case == 1 and hospitalization == "1", do: 1),
+        if(is_case == 1 and death == "2", do: 1)
       ]
     end)
     |> Stream.chunk_every(100_000)
@@ -759,6 +763,7 @@ esus_ve =
 
     input_path
     |> File.stream!(read_ahead: 100_000)
+    |> Stream.drop(1)
     |> Enum.reduce({[], 0}, fn line, {data, size} ->
       if List.first(data) == line do
         {data, size}
@@ -779,4 +784,37 @@ esus_ve =
     File.close(file)
   end)
   |> Phi.Pipe.run(id, &Phi.XSV.sort(&1, &2, select: [2]), result_dir: paths.output)
+```
+
+## Sanitização
+
+> Atenção! A partir desta seção os caminhos do _path_ de cada Pipe poderão ser inválidos
+
+* Confirme `:rename_results?` para renomear os arquivos de saída para nomes mais significativos
+* Confirme `:purge?` para remover o diretório de processamento
+
+```elixir
+sanitize = fn opts ->
+  if Keyword.get(opts, :purge?, false) == true do
+    File.rm_rf!(paths.pipe)
+  end
+
+  if Keyword.get(opts, :rename_results?, false) == true do
+    path = esus_ve.history.linkage
+
+    if File.exists?(path) do
+      new_path = Path.join(Path.dirname(path), "linkage.csv")
+      File.rename!(path, new_path)
+    end
+
+    path = sipni.history.vaccines
+
+    if File.exists?(path) do
+      new_path = Path.join(Path.dirname(path), "vaccines.csv")
+      File.rename!(path, new_path)
+    end
+  end
+end
+
+sanitize.(rename_results?: true, purge?: true)
 ```

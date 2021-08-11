@@ -1,0 +1,559 @@
+# Consolidações: Mato Grosso do Sul
+
+## Informações Gerais
+
+> Lembre-se de ativar o _runtime_ para `Mix Standalone` com o caminho para `/data`
+
+<!-- livebook:{"break_markdown":true} -->
+
+Objetivo deste book consiste em gerar consolidações dos seguintes indicadores do linkage do estado de Mato Grosso do Sul.
+
+<!-- livebook:{"break_markdown":true} -->
+
+### Dimensões
+
+#### Por situação de vacinação
+
+* `n/a` - Desconsiderando a vacinação
+* `no_vaccine` - Considerando apenas quem não foi vacinado
+* `partial_vaccine` - Considerando apenas quem foi vacinado uma vez para vacinas de 2 doses
+* `full_vaccine`- Considerando apenas quem foi vacinado com a quantidade esperada de doses da vacina
+* `guarded` - Considerando `full_vaccine` com, ao menos, 14 dias depois da data dos primeiros sintomas
+
+#### Faixas etárias
+
+* `18-29` - Considerando na idade entre 18 e 29 anos
+* `30-39` - Considerando na idade entre 30 e 39 anos
+* `40-49` - Considerando na idade entre 40 e 49 anos
+* `50-59` - Considerando na idade entre 50 e 59 anos
+* `60-69` - Considerando na idade entre 60 e 69 anos
+* `70-79` - Considerando na idade entre 70 e 79 anos
+* `80+` - Considerando na idade de 80 anos ou maior
+
+<!-- livebook:{"break_markdown":true} -->
+
+### Consolidações e-SUS VE
+
+* `esus_ve_cases` - Casos sintomáticos do e-SUS VE:
+  * `esus_ve_cases` (faixas etárias, situação de vacinação `n/a`)
+  * `esus_ve_cases_no_vaccine` (faixas etárias)
+  * `esus_ve_cases_partial_vaccine` (faixas etárias)
+  * `esus_ve_cases_full_vaccine` (faixas etárias)
+  * `esus_ve_cases_guarded` (faixas etárias)
+
+<!-- livebook:{"break_markdown":true} -->
+
+### Consolidações SIPNI
+
+* `sipni` - Vacinações (SIPNI):
+  * `sipni_partial_vaccine` (faixas etárias)
+  * `sipni_full_vaccine` (faixas etárias)
+
+<!-- livebook:{"break_markdown":true} -->
+
+### Consolidações SIVEP
+
+* `sivep_cases` - Casos do SIVEP:
+
+  * `sivep_cases` (faixas etárias, situação de vacinação `n/a`)
+  * `sivep_cases_no_vaccine` (faixas etárias)
+  * `sivep_cases_partial_vaccine` (faixas etárias)
+  * `sivep_cases_full_vaccine` (faixas etárias)
+  * `sivep_cases_guarded` (faixas etárias)
+
+* `sivep_hospitalizations` - Internações (SIVEP):
+
+  * `sivep_hospitalizations` (faixas etárias, situação de vacinação `n/a`)
+  * `sivep_hospitalizations_no_vaccine` (faixas etárias)
+  * `sivep_hospitalizations_partial_vaccine` (faixas etárias)
+  * `sivep_hospitalizations_full_vaccine` (faixas etárias)
+  * `sivep_hospitalizations_guarded` (faixas etárias)
+
+* `sivep_deaths` - Óbitos (SIVEP):
+
+  * `sivep_deaths` (faixas etárias, situação de vacinação `n/a`)
+  * `sivep_deaths_no_vaccine` (faixas etárias)
+  * `sivep_deaths_partial_vaccine` (faixas etárias)
+  * `sivep_deaths_full_vaccine` (faixas etárias)
+  * `sivep_deaths_guarded` (faixas etárias)
+
+<!-- livebook:{"break_markdown":true} -->
+
+### Consolidações Compostas
+
+* `summed_cases` - _Merge_ através de `esus_ve_cases + sivep_cases`:
+
+  * `summed_cases` (`esus_ve_cases + sivep_cases`)
+  * `summed_cases_no_vaccine` (`esus_ve_cases_no_vaccine + sivep_cases_no_vaccine`)
+  * `summed_cases_partial_vaccine` (`esus_ve_cases_partial_vaccine + sivep_cases_partial_vaccine`)
+  * `summed_cases_full_vaccine` (`esus_ve_cases_full_vaccine + sivep_cases_full_vaccine`)
+  * `summed_cases_guarded` (`esus_ve_cases_guarded + sivep_cases_guarded`)
+
+* `sivep_ratio` - _Merge_ através de `sivep_cases / summed_cases`:
+
+  * `sivep_ratio` (`sivep_cases / summed_cases`)
+  * `sivep_ratio_no_vaccine` (`sivep_cases_no_vaccine / summed_cases_no_vaccine`)
+  * `sivep_ratio_partial_vaccine` (`sivep_cases_partial_vaccine / summed_cases_partial_vaccine`)
+  * `sivep_ratio_full_vaccine` (`sivep_cases_full_vaccine / summed_cases_full_vaccine`)
+  * `sivep_ratio_guarded` (`sivep_cases_guarded / summed_cases_guarded`)
+
+* `population_no_vaccine` - _Merge_ através de `population - sipni_full_vaccine`
+
+## Entrada
+
+<!-- livebook:{"livebook_object":"cell_input","name":"Caminho para o linkage","type":"text","value":"sandbox/results/linkage.csv"} -->
+
+## Saída
+
+<!-- livebook:{"livebook_object":"cell_input","name":"Caminho para o diretório de resultados","type":"text","value":"sandbox/results"} -->
+
+## Identificação dos caminhos
+
+```elixir
+get_input_path = fn context ->
+  "Caminho para #{context}: "
+  |> IO.gets()
+  |> String.trim()
+  |> Path.expand(__DIR__)
+  |> tap(&unless(File.exists?(&1), do: raise("Caminho #{&1} não existe.")))
+end
+
+get_destination_path = fn context ->
+  "Caminho para #{context}: "
+  |> IO.gets()
+  |> String.trim()
+  |> Path.expand(__DIR__)
+  |> tap(&File.mkdir_p!(&1))
+end
+
+paths = %{
+  input: %{
+    linkage: get_input_path.("o linkage")
+  },
+  output: get_destination_path.("o diretório de resultados")
+}
+```
+
+## Definição de funções e variáveis
+
+```elixir
+create_ets = fn ets_table ->
+  try do
+    :ets.new(ets_table, [:set, :public, :named_table])
+  rescue
+    _error -> :ets.delete_all_objects(ets_table)
+  end
+end
+
+add_state = fn ets_table, state, age_index, default ->
+  :ets.update_counter(ets_table, state, {age_index + 1, 1}, default)
+end
+
+add_both = fn ets_table, state, city, age_index, default ->
+  :ets.update_counter(ets_table, state, {age_index + 1, 1}, default)
+  :ets.update_counter(ets_table, city, {age_index + 1, 1}, default)
+end
+
+header = ~w(location age_18_29 age_30_39 age_40_49 age_50_59 age_60_69 age_70_79 age_80_plus)
+
+wrap = fn ets_table ->
+  fn _input_path, output_path ->
+    ets_table
+    |> :ets.tab2list()
+    |> Enum.map(&Tuple.to_list(&1))
+    |> Enum.sort(&(List.first(&1) <= List.first(&2)))
+    |> then(&[header | &1])
+    |> NimbleCSV.RFC4180.dump_to_iodata()
+    |> then(&File.write(output_path, &1))
+  end
+end
+
+keys = ~w(18_29 30_39 40_49 50_59 60_69 70_79 80+)
+
+show_plot = fn title, context, city, data ->
+  VegaLite.new(title: "#{title} - #{city}", width: 150, height: 150)
+  |> VegaLite.data_from_values(data)
+  |> VegaLite.mark(:bar)
+  |> VegaLite.transform(fold: keys)
+  |> VegaLite.encode_field(:x, "key", type: :nominal, title: "Faixa etária")
+  |> VegaLite.encode_field(:y, "value", type: :quantitative, title: context)
+end
+
+show_plots = fn title, context, path ->
+  VegaLite.new()
+  |> VegaLite.concat(
+    path
+    |> File.read!()
+    |> NimbleCSV.RFC4180.parse_string()
+    |> Enum.map(fn [city | data] -> show_plot.(title, context, city, [Enum.zip(keys, data)]) end)
+  )
+end
+
+show_ets = fn ets_table ->
+  ets_table
+  |> Kino.ETS.new()
+  |> Kino.render()
+end
+
+show_table = fn path ->
+  path
+  |> File.read!()
+  |> NimbleCSV.RFC4180.parse_string()
+  |> Enum.map(fn line ->
+    ["localidade" | keys]
+    |> Enum.zip(line)
+    |> Enum.map(fn {k, v} -> {k, String.to_integer(v)} end)
+  end)
+  |> Kino.DataTable.new()
+end
+
+:ok
+```
+
+## esus_ve_cases
+
+```elixir
+esus_ve =
+  :esus_ve
+  |> Phi.Pipe.new(paths.input.linkage)
+  |> Phi.Pipe.run(
+    :cases,
+    fn input_path, output_path ->
+      create_ets.(:na)
+      create_ets.(:no_vaccine)
+      create_ets.(:partial_vaccine)
+      create_ets.(:full_vaccine)
+      create_ets.(:guarded)
+
+      paths.input.linkage
+      |> File.stream!(read_ahead: 100_000)
+      |> NimbleCSV.RFC4180.parse_stream()
+      |> Flow.from_enumerable()
+      |> Flow.map(fn [_, city, age_index, date, _, vaccination_date, _, _, _, is_full_vaccination] ->
+        age_index = String.to_integer(age_index)
+        default = {city, 0, 0, 0, 0, 0, 0, 0}
+
+        add =
+          if city != "" do
+            &add_both.(&1, 50, String.to_integer(city), age_index, default)
+          else
+            &add_state.(&1, 50, age_index, default)
+          end
+
+        if date != "" do
+          add.(:na)
+
+          if is_full_vaccination == "1" do
+            add.(:full_vaccine)
+
+            date
+            |> Date.from_iso8601!()
+            |> Date.diff(Date.from_iso8601!(vaccination_date))
+            |> then(&(&1 > 14))
+            |> if(do: add.(:guarded))
+          else
+            if is_full_vaccination == "0" do
+              add.(:partial_vaccine)
+            else
+              add.(:no_vaccine)
+            end
+          end
+        end
+      end)
+      |> Flow.run()
+
+      wrap.(:na).(input_path, output_path)
+    end,
+    result_dir: paths.output,
+    force?: true
+  )
+  |> Phi.Pipe.run(:cases_no_vaccine, wrap.(:no_vaccine))
+  |> Phi.Pipe.run(:cases_partial_vaccine, wrap.(:partial_vaccine))
+  |> Phi.Pipe.run(:cases_full_vaccine, wrap.(:full_vaccine))
+  |> Phi.Pipe.run(:cases_guarded, wrap.(:guarded))
+```
+
+```elixir
+IO.puts("Casos sintomáticos ocorridos após 15 dias da data de vacinação completa")
+show_plots.("e-SUS VE", "Casos", esus_ve.path)
+```
+
+## sipni
+
+```elixir
+sipni =
+  :sipni
+  |> Phi.Pipe.new(paths.input.linkage)
+  |> Phi.Pipe.run(
+    :partial_vaccine,
+    fn input_path, output_path ->
+      create_ets.(:partial_vaccine)
+      create_ets.(:full_vaccine)
+
+      paths.input.linkage
+      |> File.stream!(read_ahead: 100_000)
+      |> NimbleCSV.RFC4180.parse_stream()
+      |> Flow.from_enumerable()
+      |> Flow.map(fn [_, city, age_index, _, _, _, _, _, _, is_full_vaccination] ->
+        age_index = String.to_integer(age_index)
+        default = {city, 0, 0, 0, 0, 0, 0, 0}
+
+        add =
+          if city != "" do
+            &add_both.(&1, 50, String.to_integer(city), age_index, default)
+          else
+            &add_state.(&1, 50, age_index, default)
+          end
+
+        if is_full_vaccination == "1" do
+          add.(:full_vaccine)
+        else
+          if is_full_vaccination == "0" do
+            add.(:partial_vaccine)
+          end
+        end
+      end)
+      |> Flow.run()
+
+      wrap.(:partial_vaccine).(input_path, output_path)
+    end,
+    result_dir: paths.output
+  )
+  |> Phi.Pipe.run(:full_vaccine, wrap.(:full_vaccine))
+```
+
+```elixir
+IO.puts("Vacinações completas (1 com a Janssen ou 2 de outro laboratório)")
+show_plots.("SIPNI", "Vacinações", sipni.path)
+```
+
+## sivep_cases
+
+```elixir
+sivep =
+  :sivep
+  |> Phi.Pipe.new(paths.input.linkage)
+  |> Phi.Pipe.run(
+    :cases,
+    fn input_path, output_path ->
+      create_ets.(:na)
+      create_ets.(:no_vaccine)
+      create_ets.(:partial_vaccine)
+      create_ets.(:full_vaccine)
+      create_ets.(:guarded)
+
+      paths.input.linkage
+      |> File.stream!(read_ahead: 100_000)
+      |> NimbleCSV.RFC4180.parse_stream()
+      |> Flow.from_enumerable()
+      |> Flow.map(fn [
+                       _,
+                       city,
+                       age_index,
+                       _,
+                       date,
+                       vaccination_date,
+                       is_case,
+                       _,
+                       _,
+                       is_full_vaccination
+                     ] ->
+        age_index = String.to_integer(age_index)
+        default = {city, 0, 0, 0, 0, 0, 0, 0}
+
+        add =
+          if city != "" do
+            &add_both.(&1, 50, String.to_integer(city), age_index, default)
+          else
+            &add_state.(&1, 50, age_index, default)
+          end
+
+        if date != "" and is_case == "1" do
+          add.(:na)
+
+          if is_full_vaccination == "1" do
+            add.(:full_vaccine)
+
+            date
+            |> Date.from_iso8601!()
+            |> Date.diff(Date.from_iso8601!(vaccination_date))
+            |> then(&(&1 > 14))
+            |> if(do: add.(:guarded))
+          else
+            if is_full_vaccination == "0" do
+              add.(:partial_vaccine)
+            else
+              add.(:no_vaccine)
+            end
+          end
+        end
+      end)
+      |> Flow.run()
+
+      wrap.(:na).(input_path, output_path)
+    end,
+    result_dir: paths.output
+  )
+  |> Phi.Pipe.run(:cases_no_vaccine, wrap.(:no_vaccine))
+  |> Phi.Pipe.run(:cases_partial_vaccine, wrap.(:partial_vaccine))
+  |> Phi.Pipe.run(:cases_full_vaccine, wrap.(:full_vaccine))
+  |> Phi.Pipe.run(:cases_guarded, wrap.(:guarded))
+```
+
+```elixir
+IO.puts("Casos ocorridos após 15 dias da data de vacinação completa")
+show_plots.("SIVEP", "Casos", sivep.path)
+```
+
+## sivep_hospitalizations
+
+```elixir
+sivep =
+  sivep
+  |> Phi.Pipe.run(
+    :hospitalizations,
+    fn input_path, output_path ->
+      create_ets.(:na)
+      create_ets.(:no_vaccine)
+      create_ets.(:partial_vaccine)
+      create_ets.(:full_vaccine)
+      create_ets.(:guarded)
+
+      paths.input.linkage
+      |> File.stream!(read_ahead: 100_000)
+      |> NimbleCSV.RFC4180.parse_stream()
+      |> Flow.from_enumerable()
+      |> Flow.map(fn [
+                       _,
+                       city,
+                       age_index,
+                       _,
+                       date,
+                       vaccination_date,
+                       _,
+                       is_hospitalization,
+                       _,
+                       is_full_vaccination
+                     ] ->
+        age_index = String.to_integer(age_index)
+        default = {city, 0, 0, 0, 0, 0, 0, 0}
+
+        add =
+          if city != "" do
+            &add_both.(&1, 50, String.to_integer(city), age_index, default)
+          else
+            &add_state.(&1, 50, age_index, default)
+          end
+
+        if date != "" and is_hospitalization == "1" do
+          add.(:na)
+
+          if is_full_vaccination == "1" do
+            add.(:full_vaccine)
+
+            date
+            |> Date.from_iso8601!()
+            |> Date.diff(Date.from_iso8601!(vaccination_date))
+            |> then(&(&1 > 14))
+            |> if(do: add.(:guarded))
+          else
+            if is_full_vaccination == "0" do
+              add.(:partial_vaccine)
+            else
+              add.(:no_vaccine)
+            end
+          end
+        end
+      end)
+      |> Flow.run()
+
+      wrap.(:na).(input_path, output_path)
+    end
+  )
+  |> Phi.Pipe.run(:hospitalizations_no_vaccine, wrap.(:no_vaccine))
+  |> Phi.Pipe.run(:hospitalizations_partial_vaccine, wrap.(:partial_vaccine))
+  |> Phi.Pipe.run(:hospitalizations_full_vaccine, wrap.(:full_vaccine))
+  |> Phi.Pipe.run(:hospitalizations_guarded, wrap.(:guarded))
+```
+
+```elixir
+IO.puts("Internações ocorridas após 15 dias da data de vacinação completa")
+show_plots.("SIVEP", "Casos", sivep.path)
+```
+
+## sivep_deaths
+
+```elixir
+sivep =
+  sivep
+  |> Phi.Pipe.run(
+    :deaths,
+    fn input_path, output_path ->
+      create_ets.(:na)
+      create_ets.(:no_vaccine)
+      create_ets.(:partial_vaccine)
+      create_ets.(:full_vaccine)
+      create_ets.(:guarded)
+
+      paths.input.linkage
+      |> File.stream!(read_ahead: 100_000)
+      |> NimbleCSV.RFC4180.parse_stream()
+      |> Flow.from_enumerable()
+      |> Flow.map(fn [
+                       _,
+                       city,
+                       age_index,
+                       _,
+                       date,
+                       vaccination_date,
+                       _,
+                       _,
+                       is_death,
+                       is_full_vaccination
+                     ] ->
+        age_index = String.to_integer(age_index)
+        default = {city, 0, 0, 0, 0, 0, 0, 0}
+
+        add =
+          if city != "" do
+            &add_both.(&1, 50, String.to_integer(city), age_index, default)
+          else
+            &add_state.(&1, 50, age_index, default)
+          end
+
+        if date != "" and is_death == "1" do
+          add.(:na)
+
+          if is_full_vaccination == "1" do
+            add.(:full_vaccine)
+
+            date
+            |> Date.from_iso8601!()
+            |> Date.diff(Date.from_iso8601!(vaccination_date))
+            |> then(&(&1 > 14))
+            |> if(do: add.(:guarded))
+          else
+            if is_full_vaccination == "0" do
+              add.(:partial_vaccine)
+            else
+              add.(:no_vaccine)
+            end
+          end
+        end
+      end)
+      |> Flow.run()
+
+      wrap.(:na).(input_path, output_path)
+    end,
+    result_dir: paths.output
+  )
+  |> Phi.Pipe.run(:deaths_no_vaccine, wrap.(:no_vaccine))
+  |> Phi.Pipe.run(:deaths_partial_vaccine, wrap.(:partial_vaccine))
+  |> Phi.Pipe.run(:deaths_full_vaccine, wrap.(:full_vaccine))
+  |> Phi.Pipe.run(:deaths_guarded, wrap.(:guarded))
+```
+
+```elixir
+IO.puts("Óbitos ocorridos após 15 dias da data de vacinação completa")
+show_plots.("SIVEP", "Óbitos", sivep.path)
+```

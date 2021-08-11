@@ -4,5 +4,5 @@ services:
   build:
     image: pydemic/livebook
     build:
-      context: ../../
-      dockerfile: .misc/docker/Dockerfile
+      context: ../../../
+      dockerfile: .misc/docker/prod/Dockerfile

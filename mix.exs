@@ -27,7 +27,9 @@ defmodule Phi do
   defp deps do
     [
       {:flow, "~> 1.1.0"},
-      {:nimble_csv, "~> 1.1.0"}
+      {:kino, "~> 0.3.0"},
+      {:nimble_csv, "~> 1.1.0"},
+      {:vega_lite, "~> 0.1.0"}
     ]
   end
 end

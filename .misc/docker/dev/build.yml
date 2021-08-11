@@ -1,0 +1,8 @@
+version: '3.8'
+
+services:
+  build:
+    image: pydemic/livebook:dev
+    build:
+      context: ../../../
+      dockerfile: .misc/docker/prod/Dockerfile

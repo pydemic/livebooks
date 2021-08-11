@@ -7,7 +7,7 @@ RUN git clone https://github.com/BurntSushi/xsv.git && \
 FROM elixir:1.12.2
 
 ENV PATH="/root/.mix/escripts:${PATH}" \
-    LIVEBOOK_IP="0.0.0.0"
+  LIVEBOOK_IP="0.0.0.0"
 
 COPY --from=xsv /xsv/target/release/xsv /usr/local/bin/xsv
 
@@ -16,6 +16,6 @@ WORKDIR /data
 RUN mix local.hex --force && \
   mix local.rebar --force
 
-RUN mix escript.install --force github livebook-dev/livebook
+RUN mix escript.install --force github elixir-nx/livebook
 
 CMD ["sleep", "infinity"]

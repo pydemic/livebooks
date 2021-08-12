@@ -1,0 +1,394 @@
+<!-- livebook:{"persist_outputs":true} -->
+
+# Análises: Mato Grosso do Sul
+
+## Informações Gerais
+
+> Lembre-se de ativar o _runtime_ para `Mix Standalone` com o caminho para `/data`
+
+<!-- livebook:{"break_markdown":true} -->
+
+Objetivo deste book consiste em apresentar gráficos e tabelas sobre os resultados alcançados com as bases do e-SUS VE, SIPNI e SIVEP do estado de Mato Grosso do Sul.
+
+## Identificação dos caminhos
+
+```elixir
+results_dir = Path.expand("sandbox/results", __DIR__)
+
+put_path = fn {map, context}, suffix ->
+  desired_file =
+    if suffix == :na do
+      "#{context}.csv"
+    else
+      "#{context}_#{suffix}.csv"
+    end
+
+  results_dir
+  |> File.ls!()
+  |> Enum.find(&(&1 =~ desired_file))
+  |> tap(
+    &if(
+      is_nil(&1),
+      do: raise(~s(Arquivo "*#{desired_file}" não encontrado))
+    )
+  )
+  |> Path.expand(results_dir)
+  |> then(&{Map.put(map, suffix, &1), context})
+end
+
+paths = %{
+  esus_ve: %{
+    cases:
+      {%{}, "esus_ve_cases"}
+      |> put_path.(:na)
+      |> put_path.(:no_vaccine)
+      |> put_path.(:partial_vaccine)
+      |> put_path.(:full_vaccine)
+      |> put_path.(:guarded)
+      |> then(&elem(&1, 0))
+  },
+  sipni:
+    {%{}, "sipni"}
+    |> put_path.(:partial_vaccine)
+    |> put_path.(:full_vaccine),
+  sivep: %{
+    cases:
+      {%{}, "sivep_cases"}
+      |> put_path.(:na)
+      |> put_path.(:no_vaccine)
+      |> put_path.(:partial_vaccine)
+      |> put_path.(:full_vaccine)
+      |> put_path.(:guarded)
+      |> then(&elem(&1, 0)),
+    hospitalizations:
+      {%{}, "sivep_hospitalizations"}
+      |> put_path.(:na)
+      |> put_path.(:no_vaccine)
+      |> put_path.(:partial_vaccine)
+      |> put_path.(:full_vaccine)
+      |> put_path.(:guarded)
+      |> then(&elem(&1, 0)),
+    deaths:
+      {%{}, "sivep_deaths"}
+      |> put_path.(:na)
+      |> put_path.(:no_vaccine)
+      |> put_path.(:partial_vaccine)
+      |> put_path.(:full_vaccine)
+      |> put_path.(:guarded)
+      |> then(&elem(&1, 0))
+  }
+}
+```
+
+## Definição de funções e variáveis
+
+```elixir
+defmodule MS do
+  def create_ets(ets_table) do
+    :ets.new(ets_table, [:set, :public, :named_table])
+  rescue
+    _error -> :ets.delete_all_objects(ets_table)
+  end
+
+  def extract_and_join_csvs(csv_path1, csv_path2, filter, parser, merger) do
+    data1 = parse_csv(csv_path1, filter, parser)
+    data2 = parse_csv(csv_path2, filter, parser)
+
+    {result, data2} =
+      Enum.reduce(data1, {[], data2}, fn item1, {result, data2} ->
+        {item2, data2} = pop_in_list(data2, MS.Filter.same_location_and_date_function(item1))
+
+        if is_nil(item2) do
+          {[item1 | result], data2}
+        else
+          {[merger.(item1, item2) | result], data2}
+        end
+      end)
+
+    data2 ++ result
+  end
+
+  def parse_csv(csv_path, filter, parser) do
+    csv_path
+    |> File.read!()
+    |> NimbleCSV.RFC4180.parse_string()
+    |> parse_lines(filter, parser)
+  end
+
+  def parse_lines(data, filter, parser) do
+    if is_list(parser) do
+      [root_parser | parsers] = parser
+
+      data
+      |> Enum.map(fn line ->
+        data = root_parser.(line, filter)
+
+        unless is_nil(data) do
+          Enum.reduce(parsers, data, & &1.(&2))
+        end
+      end)
+      |> Enum.reject(&is_nil/1)
+    else
+      data
+      |> Enum.map(&parser.(&1, filter))
+      |> Enum.reject(&is_nil/1)
+    end
+  end
+
+  def pop_in_list(list, acc \\ [], fun) do
+    if Enum.any?(list) do
+      [item | list] = list
+
+      if fun.(item) do
+        {item, acc ++ list}
+      else
+        pop_in_list(list, [item | acc], fun)
+      end
+    else
+      {nil, acc}
+    end
+  end
+end
+
+defmodule MS.Filter do
+  def state(map), do: map.location == 50
+  def before(map, date), do: Date.compare(map.date, date) == :lt
+
+  def same_location_and_date_function(map) do
+    &(&1.location == map.location and Date.compare(&1.date, map.date) == :eq)
+  end
+end
+
+defmodule MS.Merger do
+  def consolidation_merge(data1, data2, key1, key2, default1, default2) do
+    {result, data2} =
+      Enum.reduce(data1, {[], data2}, fn item1, {result, data2} ->
+        {item2, data2} = MS.pop_in_list(data2, MS.Filter.same_location_and_date_function(item1))
+
+        item1 = Map.put(item1, key2, if(is_nil(item2), do: default2, else: item2[key2]))
+
+        {[item1 | result], data2}
+      end)
+
+    data2
+    |> Enum.map(&Map.put(&1, key1, default1))
+    |> Kernel.++(result)
+    |> Enum.map(&Map.put(Map.take(&1, [:date, key1, key2]), :date, to_string(&1.date)))
+  end
+
+  def sum_function(key), do: fn m1, m2 -> Map.put(m1, key, m1[key] + m2[key]) end
+end
+
+defmodule MS.Locations do
+  @ets :cities
+  @csv "sandbox/input/ms_cities_names.csv"
+
+  def init(path \\ @csv) do
+    MS.create_ets(@ets)
+
+    path
+    |> Path.expand(__DIR__)
+    |> File.read!()
+    |> NimbleCSV.RFC4180.parse_string()
+    |> Enum.map(fn [k, v] -> {String.to_integer(k), v} end)
+    |> then(&[{50, "Mato Grosso do Sul"} | &1])
+    |> then(&:ets.insert(@ets, &1))
+
+    :ok
+  end
+
+  def name(id), do: :ets.lookup_element(:cities, id, 2)
+end
+
+defmodule MS.Parser do
+  @keys ~w(a18_29 a30_39 a40_49 a50_59 a60_69 a70_79 a80_plus)a
+
+  def age_groups(age_groups) do
+    age_groups
+    |> Enum.map(&String.to_integer/1)
+    |> then(&Enum.zip(@keys, &1))
+  end
+
+  def consolidation([location, date | age_groups], filter) do
+    item = %{
+      location: String.to_integer(location),
+      date: Date.from_iso8601!(date),
+      age_groups: age_groups(age_groups)
+    }
+
+    if is_nil(filter) do
+      item
+    else
+      if filter.(item) do
+        item
+      else
+        nil
+      end
+    end
+  end
+
+  def sum_age_groups_function(key) do
+    &Map.put(&1, key, Enum.reduce(&1.age_groups, 0, fn {_k, v}, acc -> acc + v end))
+  end
+end
+
+:ok
+```
+
+```elixir
+MS.Locations.init()
+```
+
+<!-- livebook:{"branch_parent_index":2} -->
+
+## Casos entre vacinados e não vacinados
+
+```elixir
+defmodule CasesVaccineNoVaccine do
+  @title "Casos entre vacinados e não vacinados"
+  @label "Casos"
+
+  def plot(paths) do
+    %{guarded: guarded1, no_vaccine: no_vaccine1} = paths.esus_ve.cases
+    %{guarded: guarded2, no_vaccine: no_vaccine2} = paths.sivep.cases
+
+    guarded =
+      :guarded
+      |> prepare(guarded1, guarded2)
+      |> Enum.map(&%{date: to_string(&1.date), key: "Vacinado", value: &1.guarded})
+
+    no_vaccine =
+      :no_vaccine
+      |> prepare(no_vaccine1, no_vaccine2)
+      |> Enum.map(&%{date: to_string(&1.date), key: "Não vacinado", value: &1.no_vaccine})
+
+    stacked_area(guarded ++ no_vaccine)
+  end
+
+  defp prepare(key, csv_path1, csv_path2) do
+    today = Date.utc_today()
+
+    MS.extract_and_join_csvs(
+      csv_path1,
+      csv_path2,
+      fn map -> MS.Filter.state(map) and MS.Filter.before(map, today) end,
+      [&MS.Parser.consolidation/2, MS.Parser.sum_age_groups_function(key)],
+      MS.Merger.sum_function(key)
+    )
+  end
+
+  def stacked_area(data) do
+    [title: @title, width: 600, height: 400]
+    |> VegaLite.new()
+    |> VegaLite.data_from_values(data)
+    |> VegaLite.mark(:area, tooltip: true)
+    |> VegaLite.encode_field(:x, "date", type: :temporal, title: "Data")
+    |> VegaLite.encode_field(:y, "value", type: :quantitative, title: @label)
+    |> VegaLite.encode_field(:color, "key", type: :nominal, title: "Tipo")
+  end
+end
+
+CasesVaccineNoVaccine.plot(paths)
+```
+
+<!-- livebook:{"branch_parent_index":2} -->
+
+## Internações entre vacinados e não vacinados
+
+```elixir
+defmodule HospitalizationsVaccineNoVaccine do
+  @title "Internações entre vacinados e não vacinados"
+  @label "Internações"
+
+  def plot(paths) do
+    %{guarded: guarded, no_vaccine: no_vaccine} = paths.sivep.hospitalizations
+
+    guarded =
+      :guarded
+      |> prepare(guarded)
+      |> Enum.map(&%{date: to_string(&1.date), key: "Vacinado", value: &1.guarded})
+
+    no_vaccine =
+      :no_vaccine
+      |> prepare(no_vaccine)
+      |> Enum.map(&%{date: to_string(&1.date), key: "Não vacinado", value: &1.no_vaccine})
+
+    stacked_area(guarded ++ no_vaccine)
+  end
+
+  defp prepare(key, csv_path) do
+    today = Date.utc_today()
+
+    MS.parse_csv(
+      csv_path,
+      fn map -> MS.Filter.state(map) and MS.Filter.before(map, today) end,
+      parser(key)
+    )
+  end
+
+  defp stacked_area(data) do
+    [title: @title, width: 600, height: 400]
+    |> VegaLite.new()
+    |> VegaLite.data_from_values(data)
+    |> VegaLite.mark(:area, tooltip: true)
+    |> VegaLite.encode_field(:x, "date", type: :temporal, title: "Data")
+    |> VegaLite.encode_field(:y, "value", type: :quantitative, title: @label)
+    |> VegaLite.encode_field(:color, "key", type: :nominal, title: "Tipo")
+  end
+
+  defp parser(key), do: [&MS.Parser.consolidation/2, MS.Parser.sum_age_groups_function(key)]
+end
+
+HospitalizationsVaccineNoVaccine.plot(paths)
+```
+
+<!-- livebook:{"branch_parent_index":2} -->
+
+## Óbitos entre vacinados e não vacinados
+
+```elixir
+defmodule DeathsVaccineNoVaccine do
+  @title "Óbitos entre vacinados e não vacinados"
+  @label "Óbitos"
+
+  def plot(paths) do
+    %{guarded: guarded, no_vaccine: no_vaccine} = paths.sivep.deaths
+
+    guarded =
+      :guarded
+      |> prepare(guarded)
+      |> Enum.map(&%{date: to_string(&1.date), key: "Vacinado", value: &1.guarded})
+
+    no_vaccine =
+      :no_vaccine
+      |> prepare(no_vaccine)
+      |> Enum.map(&%{date: to_string(&1.date), key: "Não vacinado", value: &1.no_vaccine})
+
+    stacked_area(guarded ++ no_vaccine)
+  end
+
+  defp prepare(key, csv_path) do
+    today = Date.utc_today()
+
+    MS.parse_csv(
+      csv_path,
+      fn map -> MS.Filter.state(map) and MS.Filter.before(map, today) end,
+      parser(key)
+    )
+  end
+
+  defp stacked_area(data) do
+    [title: @title, width: 600, height: 400]
+    |> VegaLite.new()
+    |> VegaLite.data_from_values(data)
+    |> VegaLite.mark(:area, tooltip: true)
+    |> VegaLite.encode_field(:x, "date", type: :temporal, title: "Data")
+    |> VegaLite.encode_field(:y, "value", type: :quantitative, title: @label)
+    |> VegaLite.encode_field(:color, "key", type: :nominal, title: "Tipo")
+  end
+
+  defp parser(key), do: [&MS.Parser.consolidation/2, MS.Parser.sum_age_groups_function(key)]
+end
+
+DeathsVaccineNoVaccine.plot(paths)
+```

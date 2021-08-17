@@ -1,9 +1,8 @@
 defmodule Phi.FormatUtils do
   @moduledoc false
 
-  @spec age_index(String.t(), :from_18_to_80_by_10, keyword) :: integer
-  def age_index(age, :from_18_to_80_by_10, opts \\ []) do
-    # 1: 0_29 2: 30_39, 3: 40_49, 4: 50_59, 5: 60_69, 6: 70_79, 7: 80_or_more
+  @spec age_index(String.t(), atom, keyword) :: integer
+  def age_index(age, type, opts \\ []) do
 
     age =
       if Keyword.get(opts, :float?, false) == true do
@@ -11,6 +10,20 @@ defmodule Phi.FormatUtils do
       else
         String.to_integer(age)
       end
+
+    case type do
+      :from_18_to_80_by_10 -> age_index_from_18_to_80_by_10(age, opts)
+    end
+  end
+
+  defp age_index_from_18_to_80_by_10(age, _opts) do
+    # 1: 0_29
+    # 2: 30_39,
+    # 3: 40_49,
+    # 4: 50_59,
+    # 5: 60_69,
+    # 6: 70_79,
+    # 7: 80_or_more
 
     age
     |> div(10)

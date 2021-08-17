@@ -143,7 +143,7 @@ add_both = fn ets_table, state, city, date, age_index, default_state, default_ci
   :ets.update_counter(ets_table, {city, date}, {age_index + 1, 1}, default_city)
 end
 
-header = ~w(location date age_18_29 age_30_39 age_40_49 age_50_59 age_60_69 age_70_79 age_80_plus)
+header = ~w(location date age_15_29 age_30_39 age_40_49 age_50_59 age_60_69 age_70_79 age_80_plus)
 
 wrap = fn ets_table ->
   fn _input_path, output_path ->
@@ -161,7 +161,7 @@ wrap = fn ets_table ->
   end
 end
 
-keys = ~w(18_29 30_39 40_49 50_59 60_69 70_79 80+)
+keys = ~w(15_29 30_39 40_49 50_59 60_69 70_79 80+)
 
 show_plot = fn context, city, data ->
   [title: city_name.(city), width: 150, height: 150]
@@ -220,7 +220,7 @@ force? = false
 ## esus_ve_cases
 
 ```elixir
-force? = true
+# force? = true
 
 esus_ve =
   :esus_ve
@@ -304,7 +304,7 @@ show_plots.(
 ## sipni
 
 ```elixir
-force? = true
+# force? = true
 
 sipni =
   :sipni
@@ -369,7 +369,7 @@ show_plots.(
 ## sivep_cases
 
 ```elixir
-force? = true
+# force? = true
 
 sivep =
   :sivep
@@ -463,7 +463,7 @@ show_plots.(
 ## sivep_hospitalizations
 
 ```elixir
-force? = true
+# force? = true
 
 sivep =
   sivep
@@ -536,7 +536,7 @@ sivep =
 
       wrap.(:na).(input_path, output_path)
     end,
-    force?: false
+    force?: force?
   )
   |> Phi.Pipe.run(:hospitalizations_no_vaccine, wrap.(:no_vaccine), force?: force?)
   |> Phi.Pipe.run(:hospitalizations_partial_vaccine, wrap.(:partial_vaccine), force?: force?)
@@ -555,7 +555,7 @@ show_plots.(
 ## sivep_deaths
 
 ```elixir
-force? = true
+# force? = true
 
 sivep =
   sivep
@@ -642,5 +642,23 @@ show_plots.(
   "SIVEP: Óbitos ocorridos após 15 dias da data de vacinação completa",
   "Óbitos",
   sivep.path
+)
+```
+
+## Zip
+
+```elixir
+path = "sandbox/results" |> Path.expand(__DIR__)
+
+path
+|> File.ls!()
+|> Enum.filter(&(String.first(&1) == "0"))
+|> Enum.map(&String.to_charlist/1)
+|> then(
+  &:zip.create(
+    path |> Path.join("processamento.zip") |> String.to_charlist(),
+    &1,
+    cwd: String.to_charlist(path)
+  )
 )
 ```

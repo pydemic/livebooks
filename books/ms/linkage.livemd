@@ -91,32 +91,57 @@ sivep =
 
 ## filter_columns: Corte de colunas
 
-Colunas de interesse:
+### Colunas de interesse
 
-* e-SUS VE:
-  * `#3 dataInicioSintomas`: `DateTime`
-  * `#9 cpf`: `string (hash)`
-  * `#26 sintomas`: `string`
-  * `#30 tipoTeste`: `string`
-  * `#31 resultadoTeste`: `Positivo | Negativo`
-  * `#47 idade`: `integer`
-  * `#63 municipioIBGE`: `integer (IBGE 7 dígitos)`
-* SIPNI:
-  * `#14 paciente_cpf`: `string (hash)`
-  * `#19 paciente_endereco_coIbgeMunicipio`: `integer (IBGE 6 dígitos)`
-  * `#26 paciente_idade`: `float`
-  * `#37 vacina_codigo`: `integer`
-  * `#38 vacina_dataAplicacao`: `DateTime`
-  * `#45 vacina_nome`: `string`
-  * `#46 vacina_numDose`: `integer`
-* SIVEP:
-  * `#4 DT_SIN_PRI`: `dd/MM/yyyy`
-  * `#13 NU_CPF`: `string (hash)`
-  * `#17 NU_IDADE_N`: `integer`
-  * `#32 CO_MUN_RES`: `integer (IBGE 6 dígitos)`
-  * `#81 HOSPITAL`: `1 | 2 | 9`
-  * `#127 EVOLUCAO`: `1 cura | 2 óbito | 9`
-  * `#140 PCR_SARS2`: `1 | 0`
+<!-- livebook:{"break_markdown":true} -->
+
+#### e-SUS VE
+
+* `#3 dataInicioSintomas`: `DateTime`
+* `#9 cpf`: `string (hash)`
+* `#26 sintomas`: `string`
+* `#30 tipoTeste`: `string`
+* `#31 resultadoTeste`: `Positivo | Negativo`
+* `#47 idade`: `integer`
+* `#63 municipioIBGE`: `integer (IBGE 7 dígitos)`
+
+<!-- livebook:{"break_markdown":true} -->
+
+#### SIPNI
+
+* `#10 paciente_cpf`: `string (hash)`
+* `#14 paciente_endereco_coIbgeMunicipio`: `integer (IBGE 6 dígitos)`
+* `#20 paciente_idade`: `integer`
+* `#27 vacina_codigo`: `integer`
+* `#28 vacina_dataAplicacao`: `dd/MM/yyyy`
+* `#33 vacina_nome`: `string`
+* `#34 DOSE`: `1 | 2 | 8`
+
+Versão antiga:
+
+* `#14 paciente_cpf`: `string (hash)`
+* `#19 paciente_endereco_coIbgeMunicipio`: `integer (IBGE 6 dígitos)`
+* `#26 paciente_idade`: `float`
+* `#37 vacina_codigo`: `integer`
+* `#38 vacina_dataAplicacao`: `DateTime`
+* `#45 vacina_nome`: `string`
+* `#46 vacina_numDose`: `integer`
+
+<!-- livebook:{"break_markdown":true} -->
+
+#### SIVEP
+
+* `#4 DT_SIN_PRI`: `dd/MM/yyyy`
+* `#13 NU_CPF`: `string (hash)`
+* `#17 NU_IDADE_N`: `integer`
+* `#32 CO_MUN_RES`: `integer (IBGE 6 dígitos)`
+* `#81 HOSPITAL`: `1 | 2 | 9`
+* `#102 PCR_RESUL`: `1 | 0`
+* `#124 CLASSI_FIN`: `5 covid | ?`
+* `#127 EVOLUCAO`: `1 cura | 2 óbito | 9`
+* `#140 PCR_SARS2`: `1 | 0`
+* `#151 TP_TES_AN`: `2 teste rápido antigênico | ?`
+* `#159 AN_SARS2`: `1 | ?`
 
 ```elixir
 op = fn columns -> &Phi.XSV.select(&1, &2, columns) end
@@ -147,12 +172,15 @@ columns = [
   "vacina_codigo",
   "vacina_dataAplicacao",
   "vacina_nome",
-  "vacina_numDose"
+  "DOSE"
 ]
 
 sipni =
   sipni
   |> Phi.Pipe.run(id, op.(columns))
+
+# Phi.XSV.run(~w(frequency --select DOSE #{sipni.path})) |> IO.puts
+# Phi.XSV.run(~w(headers #{sipni.path})) |> IO.puts
 ```
 
 ```elixir
@@ -162,8 +190,12 @@ columns = [
   "NU_IDADE_N",
   "CO_MUN_RES",
   "HOSPITAL",
+  "PCR_RESUL",
+  "CLASSI_FIN",
   "EVOLUCAO",
-  "PCR_SARS2"
+  "PCR_SARS2",
+  "TP_TES_AN",
+  "AN_SARS2"
 ]
 
 sivep =
@@ -176,13 +208,13 @@ sivep =
 Restrições:
 
 * e-SUS VE:
-  * `#3 dataInicioSintomas`: `DateTime`
+  * `dataInicioSintomas`:
     * `year == 2021`
 * SIPNI:
-  * `#38 vacina_dataAplicacao`: `DateTime`
+  * `vacina_dataAplicacao`:
     * `year == 2021`
 * SIVEP:
-  * `#4 DT_SIN_PRI`: `dd/MM/yyyy`
+  * `DT_SIN_PRI`:
     * `year == 2021`
 
 ```elixir
@@ -208,7 +240,9 @@ esus_ve =
 ```elixir
 sipni =
   sipni
-  |> Phi.Pipe.run(id, op.("vacina_dataAplicacao", :datetime))
+  |> Phi.Pipe.run(id, op.("vacina_dataAplicacao", :dd_mm_yyyy))
+
+# Phi.XSV.run(~w(frequency --select vacina_dataAplicacao #{sipni.path})) |> IO.puts
 ```
 
 ```elixir
@@ -217,32 +251,32 @@ sivep =
   |> Phi.Pipe.run(id, op.("DT_SIN_PRI", :dd_mm_yyyy))
 ```
 
-## filter_age_18_plus: Filtro por idade
+## filter_age_15_plus: Filtro por idade
 
 Restrições:
 
 * e-SUS VE:
-  * `#47 idade`: `integer`
-    * `> 18`
+  * `idade`:
+    * `> 15`
 * SIPNI:
-  * `#26 paciente_idade`: `float`
-    * `> 18`
+  * `paciente_idade`:
+    * `> 15`
 * SIVEP:
-  * `#17 NU_IDADE_N`: `integer`
-    * `> 18`
+  * `NU_IDADE_N`:
+    * `> 15`
 
 ```elixir
 op = fn column_index, type ->
   regex =
     case type do
-      :float -> "^1[8-9](.0)?|1[0-3][0-9](.0)?|[2-9][0-9](.0)?$"
-      :integer -> "^1[8-9]|1[0-3][0-9]|[2-9][0-9]$"
+      :float -> "^1[5-9](.0)?|1[0-3][0-9](.0)?|[2-9][0-9](.0)?$"
+      :integer -> "^1[5-9]|1[0-3][0-9]|[2-9][0-9]$"
     end
 
   &Phi.XSV.search(&1, &2, column_index, regex)
 end
 
-id = :filter_age_18_plus
+id = :filter_age_15_plus
 ```
 
 ```elixir
@@ -254,7 +288,9 @@ esus_ve =
 ```elixir
 sipni =
   sipni
-  |> Phi.Pipe.run(id, op.("paciente_idade", :float))
+  |> Phi.Pipe.run(id, op.("paciente_idade", :integer))
+
+# Phi.XSV.run(~w(frequency --select paciente_idade #{sipni.path})) |> IO.puts
 ```
 
 ```elixir
@@ -270,13 +306,13 @@ Restringir para residentes do Mato Grosso do Sul
 Restrições:
 
 * e-SUS VE:
-  * `#63 municipioIBGE`: `integer (IBGE 7 dígitos)`
+  * `municipioIBGE`:
     * `50XXXXX`
 * SIPNI:
-  * `#19 paciente_endereco_coIbgeMunicipio`: `integer (IBGE 6 dígitos)`
+  * `paciente_endereco_coIbgeMunicipio`:
     * `50XXXX`
 * SIVEP:
-  * `#32 CO_MUN_RES`: `integer (IBGE 6 dígitos)`
+  * `CO_MUN_RES`:
     * `50XXXX`
 
 ```elixir
@@ -307,25 +343,38 @@ sivep =
 
 ## filter_null: Filtro de valores nulos em colunas obrigatórias
 
-Restrições:
+### e-SUS VE
 
-* e-SUS VE:
-  * `#3 dataInicioSintomas`: `DateTime`
-  * `#26 sintomas`: `string`
-  * `#30 tipoTeste`: `string`
-  * `#31 resultadoTeste`: `Positivo | Negativo`
-  * `#47 idade`: `integer`
-  * `#63 municipioIBGE`: `integer (IBGE 7 dígitos)`
-* SIPNI:
-  * `#19 paciente_endereco_coIbgeMunicipio`: `integer (IBGE 6 dígitos)`
-  * `#26 paciente_idade`: `float`
-  * `#37 vacina_codigo`: `integer`
-  * `#38 vacina_dataAplicacao`: `DateTime`
-  * `#46 vacina_numDose`: `integer`
-* SIVEP:
-  * `#4 DT_SIN_PRI`: `dd/MM/yyyy`
-  * `#17 NU_IDADE_N`: `integer`
-  * `#32 CO_MUN_RES`: `integer (IBGE 6 dígitos)`
+* `dataInicioSintomas`
+* `sintomas`
+* `tipoTeste`
+* `resultadoTeste`
+* `idade`
+* `municipioIBGE`
+
+### SIPNI
+
+Versão nova:
+
+* `paciente_endereco_coIbgeMunicipio`
+* `paciente_idade`
+* `vacina_codigo`
+* `vacina_dataAplicacao`
+* `DOSE`
+
+Versão antiga:
+
+* `paciente_endereco_coIbgeMunicipio`
+* `paciente_idade`
+* `vacina_codigo`
+* `vacina_dataAplicacao`
+* `vacina_numDose`
+
+### SIVEP
+
+* `DT_SIN_PRI`
+* `NU_IDADE_N`
+* `CO_MUN_RES`
 
 ```elixir
 op = fn column_index ->
@@ -356,7 +405,7 @@ sipni =
     op.("paciente_idade"),
     op.("vacina_codigo"),
     op.("vacina_dataAplicacao"),
-    op.("vacina_numDose")
+    op.("DOSE")
   ])
 ```
 
@@ -373,19 +422,19 @@ sivep =
 ## format: Validação e Formatação
 
 * e-SUS VE:
-  * `#3 dataInicioSintomas`: `DateTime`
+  * `dataInicioSintomas`
     * `#2 esus_symptoms_date`: `date`
-  * `#9 cpf`: `string (hash)`
+  * `cpf`
     * `#1 esus_cpf`: `string (hash)`
-  * `#26 sintomas`: `string`
+  * `sintomas`
     * Valida se é sintomático
-  * `#30 tipoTeste`: `string`
-    * Valida se é RT-PCR
-  * `#31 resultadoTeste`: `Positivo | Negativo`
+  * `tipoTeste`
+    * Valida se é `RT-PCR` ou `TESTE RÁPIDO - ANTÍGENO`
+  * `resultadoTeste`
     * Valida se teste foi positivo
-  * `#47 idade`: `integer`
-    * `#4 esus_age_index_18_to_80_by_10`: `integer`
-  * `#63 municipioIBGE`: `integer (IBGE 7 dígitos)`
+  * `idade`
+    * `#4 esus_age_index_15_to_80_by_10`: `integer`
+  * `municipioIBGE`
     * `#3 esus_city`: `integer (IBGE 7 dígitos)`
 
 ```elixir
@@ -400,7 +449,7 @@ esus_ve =
         "esus_cpf",
         "esus_symptoms_date",
         "esus_city",
-        "esus_age_index_18_to_80_by_10"
+        "esus_age_index_15_to_80_by_10"
       ]
       |> Enum.join(",")
       |> Kernel.<>("\n")
@@ -410,8 +459,8 @@ esus_ve =
     |> File.stream!(read_ahead: 100_000)
     |> NimbleCSV.RFC4180.parse_stream()
     |> Flow.from_enumerable()
-    |> Flow.map(fn [date, cpf, symptoms, type, result, age, city] ->
-      if symptoms != "" and type == "RT-PCR" and String.first(result) == "P" do
+    |> Flow.map(fn [date, cpf, _symptoms, type, result, age, city] ->
+      if type in ["RT-PCR", "TESTE RÁPIDO - ANTÍGENO"] and String.first(result) == "P" do
         [
           cpf,
           Phi.FormatUtils.date(date, :datetime),
@@ -432,20 +481,20 @@ esus_ve =
 ```
 
 * SIPNI:
-  * `#14 paciente_cpf`: `string (hash)`
+  * `paciente_cpf`
     * `#1 sipni_cpf`: `string (hash)`
-  * `#19 paciente_endereco_coIbgeMunicipio`: `integer (IBGE 6 dígitos)`
+  * `paciente_endereco_coIbgeMunicipio`
     * `#3 sipni_city`: `integer (IBGE 7 dígitos)`
-  * `#26 paciente_idade`: `float`
-    * `#4 sipni_age_index_18_to_80_by_10`: `integer`
-  * `#37 vacina_codigo`: `integer`
+  * `paciente_idade`
+    * `#4 sipni_age_index_15_to_80_by_10`: `integer`
+  * `vacina_codigo`
     * Para definir `#5 sipni_is_full_vaccination` em `[1]`
     * `#1 vaccine_code` em `[2]`
-  * `#38 vacina_dataAplicacao`: `DateTime`
+  * `vacina_dataAplicacao`
     * `#2 sipni_vaccination_date`: `date`
-  * `#45 vacina_nome`: `string`
+  * `vacina_nome`
     * `#2 vaccine_name` em `[2]`
-  * `#46 vacina_numDose`: `integer`
+  * `DOSE`
     * Para definir `#5 sipni_is_full_vaccination` em `[1]`
 * Arquivos:
   * `[1] format`: Dados para _linkage_
@@ -486,7 +535,7 @@ sipni =
         "sipni_cpf",
         "sipni_vaccination_date",
         "sipni_city",
-        "sipni_age_index_18_to_80_by_10",
+        "sipni_age_index_15_to_80_by_10",
         "sipni_is_full_vaccination"
       ]
       |> Enum.join(",")
@@ -517,9 +566,9 @@ sipni =
 
       [
         cpf,
-        Phi.FormatUtils.date(date, :datetime),
+        Phi.FormatUtils.date(date, :dd_mm_yyyy),
         city,
-        Phi.FormatUtils.age_index(age, :from_18_to_80_by_10, float?: true),
+        Phi.FormatUtils.age_index(age, :from_18_to_80_by_10),
         is_full_vaccination
       ]
     end)
@@ -547,22 +596,30 @@ sipni =
 ```
 
 * SIVEP:
-  * `#4 DT_SIN_PRI`: `dd/MM/yyyy`
+
+  * `DT_SIN_PRI`
     * `#2 sivep_symptoms_date`: `date`
-  * `#13 NU_CPF`: `string (hash)`
+  * `NU_CPF`
     * `#1 sivep_cpf`: `string (hash)`
-  * `#17 NU_IDADE_N`: `integer`
-    * `#4 sivep_age_index_18_to_80_by_10`: `integer`
-  * `#32 CO_MUN_RES`: `integer (IBGE 6 dígitos)`
+  * `NU_IDADE_N`
+    * `#4 sivep_age_index_15_to_80_by_10`: `integer`
+  * `CO_MUN_RES`
     * `#3 sivep_city`: `integer (IBGE 7 dígitos)`
-  * `#81 HOSPITAL`: `1 | 2 | 9`
+  * `HOSPITAL`
     * `#6 sivep_is_hospitalization`: `1 | 0`
-  * `#127 EVOLUCAO`: `1 cura | 2 óbito | 9`
+  * `EVOLUCAO`
     * `#7 sivep_is_death`: `1 | 0`
-  * `#140 PCR_SARS2`: `1 | 0`
-    * `#5 sivep_is_case`: `1 | 0`
-    * Invalida `#81 HOSPITAL` se valor não for `1`
-    * Invalida `#127 EVOLUCAO` se valor não for `1`
+  * `PCR_SARS2`
+
+* Condicional `caso`:
+
+  * `CLASSI_FIN` é `5` OU
+  * `PCR_RESULT` é `1` OU
+  * `PCR_SARS2` é `1` OU
+  * `TP_TES_AN` é `2` E
+    * `AN_SARS2` é `1`
+  * Invalida `#81 HOSPITAL` se valor não for `1`
+  * Invalida `#127 EVOLUCAO` se valor não for `1`
 
 ```elixir
 # Para converter IBGE 6 dígitos para IBGE 7 dígitos
@@ -591,7 +648,7 @@ sivep =
         "sivep_cpf",
         "sivep_symptoms_date",
         "sivep_city",
-        "sivep_age_index_18_to_80_by_10",
+        "sivep_age_index_15_to_80_by_10",
         "sivep_is_case",
         "sivep_is_hospitalization",
         "sivep_is_death"
@@ -604,26 +661,40 @@ sivep =
     |> File.stream!(read_ahead: 100_000)
     |> NimbleCSV.RFC4180.parse_stream()
     |> Flow.from_enumerable()
-    |> Flow.map(fn [date, cpf, age, city, hospitalization, death, sars2_result] ->
-      city =
-        if city == "500000" do
-          nil
-        else
-          Phi.FormatUtils.city(city, :cities)
-        end
+    |> Flow.map(fn [
+                     date,
+                     cpf,
+                     age,
+                     city,
+                     hospitalization,
+                     pcr_result,
+                     classification,
+                     death,
+                     pcr_sars2,
+                     test_type,
+                     test_sars2_result
+                   ] ->
+      if classification == "5" or pcr_result == "1" or pcr_sars2 == "1" or
+           (test_type == "2" and test_sars2_result == "1") do
+        city =
+          if city == "500000" do
+            nil
+          else
+            Phi.FormatUtils.city(city, :cities)
+          end
 
-      is_case = if(sars2_result == "1", do: 1, else: 0)
-
-      [
-        cpf,
-        Phi.FormatUtils.date(date, :dd_mm_yyyy),
-        city,
-        Phi.FormatUtils.age_index(age, :from_18_to_80_by_10),
-        is_case,
-        if(is_case == 1 and hospitalization == "1", do: 1),
-        if(is_case == 1 and death == "2", do: 1)
-      ]
+        [
+          cpf,
+          Phi.FormatUtils.date(date, :dd_mm_yyyy),
+          city,
+          Phi.FormatUtils.age_index(age, :from_18_to_80_by_10),
+          1,
+          if(hospitalization == "1", do: 1),
+          if(death == "2", do: 1)
+        ]
+      end
     end)
+    |> Stream.reject(&is_nil/1)
     |> Stream.chunk_every(100_000)
     |> Stream.map(&IO.write(file, NimbleCSV.RFC4180.dump_to_iodata(&1)))
     |> Stream.run()
@@ -639,7 +710,7 @@ _Full join_ entre as bases através das colunas de CPF, partindo da base do e-SU
 * Resultado:
   * `#1 cpf`: `string (hash)`
   * `#2 city`: `integer (IBGE 7 dígitos)`
-  * `#3 age_index_18_to_80_by_10`: `integer`
+  * `#3 age_index_15_to_80_by_10`: `integer`
   * `#4 esus_symptoms_date`: `date`
   * `#5 sivep_symptoms_date`: `date`
   * `#6 sipni_vaccination_date`: `date`
@@ -672,7 +743,7 @@ esus_ve =
       [
         "cpf",
         "city",
-        "age_index_18_to_80_by_10",
+        "age_index_15_to_80_by_10",
         "esus_symptoms_date",
         "sipni_vaccination_date",
         "sipni_is_full_vaccination"
@@ -708,7 +779,7 @@ esus_ve =
       [
         "cpf",
         "city",
-        "age_index_18_to_80_by_10",
+        "age_index_15_to_80_by_10",
         "esus_symptoms_date",
         "sivep_symptoms_date",
         "sipni_vaccination_date",
@@ -748,7 +819,7 @@ esus_ve =
       [
         "cpf",
         "city",
-        "age_index_18_to_80_by_10",
+        "age_index_15_to_80_by_10",
         "esus_symptoms_date",
         "sivep_symptoms_date",
         "sipni_vaccination_date",
@@ -784,6 +855,10 @@ esus_ve =
     File.close(file)
   end)
   |> Phi.Pipe.run(id, &Phi.XSV.sort(&1, &2, select: [2]), result_dir: paths.output)
+```
+
+```elixir
+Phi.XSV.run(~w(headers #{esus_ve.path})) |> IO.puts()
 ```
 
 ## Sanitização

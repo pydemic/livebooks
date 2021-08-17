@@ -10,6 +10,169 @@
 
 Objetivo deste book consiste em apresentar gráficos e tabelas sobre os resultados alcançados com as bases do e-SUS VE, SIPNI e SIVEP do estado de Mato Grosso do Sul.
 
+<!-- livebook:{"break_markdown":true} -->
+
+### Municípios de Fronteira
+
+1. `5000906 Antônio João`
+2. `5001243 Aral Moreira`
+3. `5002100 Bela Vista`
+4. `5002803 Caracol`
+5. `5003157 Coronel Sapucaia`
+6. `5003207 Corumbá`
+7. `5004809 Japorã`
+8. `5005202 Ladário`
+9. `5005681 Mundo Novo`
+10. `5006358 Paranhos`
+11. `5006606 Ponta Porã`
+12. `5006903 Porto Murtinho`
+13. `5007703 Sete Quedas`
+
+<!-- livebook:{"break_markdown":true} -->
+
+### Indicador de Efetividade
+
+$$
+EV = \frac{INV-IV}{INV}\ \times 100
+$$
+
+* $INV$: Incidência entre os não vacinados
+* $IV$: Incidência entre os vacinados
+
+<!-- livebook:{"break_markdown":true} -->
+
+### Taxa de Incidência
+
+$$
+\frac{C}{P} \times 100000
+$$
+
+* $C$: Casos sintomáticos ESUS-VE + SIVEP
+* $P$: População residente na faixa etária (ou geral)
+
+<!-- livebook:{"break_markdown":true} -->
+
+### Gráficos e Tabelas
+
+<!-- livebook:{"break_markdown":true} -->
+
+### Epicurva de taxa de incidência 1
+
+Filtrar:
+
+* Entre 15 e 39 anos
+
+Temporalidade:
+
+* Semana epidemiológica
+
+Gerar um por:
+
+* Por localidade
+* Somatório de fronteira
+* Somatório de não fronteira
+
+<!-- livebook:{"break_markdown":true} -->
+
+### Epicurva de taxa de incidência 2
+
+Temporalidade:
+
+* Semana epidemiológica
+
+Gerar um por:
+
+* Por localidade
+* Somatório de fronteira
+* Somatório de não fronteira
+
+<!-- livebook:{"break_markdown":true} -->
+
+#### Epicurva em Gráfico de Área Agrupada
+
+Filtrar:
+
+* Do estado
+
+Temporalidade:
+
+* Semana epidemiológica
+
+Dimensões:
+
+* Vacinados
+* Não vacinados
+
+Gerar um por:
+
+* Casos somados
+* Internações
+* Óbitos
+
+<!-- livebook:{"break_markdown":true} -->
+
+#### Distribuição em Gráfico de Barra
+
+Filtrar:
+
+* Do estado
+
+Dimensões:
+
+* Vacinados
+* Não vacinados
+* Por faixa etária
+
+Gerar um por:
+
+* Casos somados
+* Internações
+* Óbitos
+
+<!-- livebook:{"break_markdown":true} -->
+
+#### Tabela Indicador de efetividade (Município)
+
+Linhas:
+
+* Município
+
+Colunas:
+
+* casos
+* internações
+* óbitos
+
+<!-- livebook:{"break_markdown":true} -->
+
+#### Tabela Indicador de efetividade por faixa etária (Estado)
+
+Linhas:
+
+* Faixa etária
+* Todas as idades
+* 15 a 39 anos
+
+Colunas:
+
+* casos
+* internações
+* óbitos
+
+<!-- livebook:{"break_markdown":true} -->
+
+#### NÃO PRECISA Tabela Indicador de efetividade por vacina (Estado)
+
+Linhas:
+
+* Vacina
+
+Colunas:
+
+* casos
+* internações
+* óbitos
+
 ## Identificação dos caminhos
 
 ```elixir
@@ -182,6 +345,21 @@ end
 defmodule MS.Locations do
   @ets :cities
   @csv "sandbox/input/ms_cities_names.csv"
+  @boundary_cities [
+    5_000_906,
+    5_001_243,
+    5_002_100,
+    5_002_803,
+    5_003_157,
+    5_003_207,
+    5_004_809,
+    5_005_202,
+    5_005_681,
+    5_006_358,
+    5_006_606,
+    5_006_903,
+    5_007_703
+  ]
 
   def init(path \\ @csv) do
     MS.create_ets(@ets)
@@ -198,10 +376,12 @@ defmodule MS.Locations do
   end
 
   def name(id), do: :ets.lookup_element(:cities, id, 2)
+
+  def is_boundary_city?(id), do: id in @boundary_cities
 end
 
 defmodule MS.Parser do
-  @keys ~w(a18_29 a30_39 a40_49 a50_59 a60_69 a70_79 a80_plus)a
+  @keys ~w(a15_29 a30_39 a40_49 a50_59 a60_69 a70_79 a80_plus)a
 
   def age_groups(age_groups) do
     age_groups
@@ -230,6 +410,92 @@ defmodule MS.Parser do
   def sum_age_groups_function(key) do
     &Map.put(&1, key, Enum.reduce(&1.age_groups, 0, fn {_k, v}, acc -> acc + v end))
   end
+
+  def sum_age_groups_function(key, take_amount) do
+    &Map.put(
+      &1,
+      key,
+      Enum.reduce(
+        Enum.take(&1.age_groups, take_amount),
+        0,
+        fn {_k, v}, acc -> acc + v end
+      )
+    )
+  end
+end
+
+defmodule MS.Populations do
+  @ets :populations
+  @csv "sandbox/input/ms_population.csv"
+
+  def init(path \\ @csv) do
+    MS.create_ets(@ets)
+
+    path
+    |> Path.expand(__DIR__)
+    |> File.read!()
+    |> NimbleCSV.RFC4180.parse_string()
+    |> Enum.map(fn [k, v] -> {String.to_integer(k), String.to_integer(v)} end)
+    |> then(&:ets.insert(@ets, &1))
+
+    :ok
+  end
+
+  def get(id), do: :ets.lookup_element(@ets, id, 2)
+end
+
+defmodule MS.PopulationsPerAgeGroup do
+  @ets :populations_per_age
+  @csv "sandbox/input/ms_population_per_age.csv"
+
+  def init(path \\ @csv) do
+    MS.create_ets(@ets)
+
+    path
+    |> Path.expand(__DIR__)
+    |> File.read!()
+    |> NimbleCSV.RFC4180.parse_string()
+    |> Enum.map(fn list -> Enum.map(list, &String.to_integer/1) |> to_record() end)
+    |> then(&:ets.insert(@ets, &1))
+
+    :ok
+  end
+
+  defp to_record([
+         l,
+         a4,
+         a9,
+         a14,
+         a19,
+         a24,
+         a29,
+         a34,
+         a39,
+         a44,
+         a49,
+         a54,
+         a59,
+         a64,
+         a69,
+         a74,
+         a79,
+         a80m
+       ]) do
+    {
+      l,
+      a4 + a9 + a14 + a19 + a24 + a29 + a34 + a39,
+      a4 + a9 + a14 + a19 + a24 + a29,
+      a34 + a39,
+      a44 + a49,
+      a54 + a59,
+      a64 + a69,
+      a74 + a79,
+      a80m
+    }
+  end
+
+  def get(id, index), do: :ets.lookup_element(@ets, id, index + 2)
+  def less_than_30(id), do: :ets.lookup_element(@ets, id, 2)
 end
 
 :ok
@@ -237,11 +503,227 @@ end
 
 ```elixir
 MS.Locations.init()
+MS.Populations.init()
+MS.PopulationsPerAgeGroup.init()
 ```
 
 <!-- livebook:{"branch_parent_index":2} -->
 
-## Casos entre vacinados e não vacinados
+## Epicurva de taxa de incidência 1
+
+```elixir
+defmodule EpicurveIncidenceRate1 do
+  @title "Epicurva de taxa de incidência"
+  @label "Taxa de incidência"
+
+  def plot(paths) do
+    %{na: cases1} = paths.esus_ve.cases
+    %{na: cases2} = paths.sivep.cases
+
+    :cases
+    |> prepare(cases1, cases2)
+    |> Enum.map(&parse/1)
+    |> epicurves()
+  end
+
+  defp prepare(key, csv_path1, csv_path2) do
+    today = Date.utc_today()
+
+    MS.extract_and_join_csvs(
+      csv_path1,
+      csv_path2,
+      &MS.Filter.before(&1, today),
+      [&MS.Parser.consolidation/2, MS.Parser.sum_age_groups_function(key, 2)],
+      MS.Merger.sum_function(key)
+    )
+  end
+
+  defp parse(%{cases: cases, location: location} = item) do
+    population = MS.PopulationsPerAgeGroup.less_than_30(location)
+
+    %{
+      date: to_string(item.date),
+      location: location,
+      cases: cases,
+      population: population,
+      value: Float.round(cases / population * 100_000, 1)
+    }
+  end
+
+  def epicurves(data) do
+    [title: @title]
+    |> VegaLite.new()
+    |> VegaLite.concat(
+      data
+      |> Enum.group_by(& &1.location)
+      |> Enum.sort(&(elem(&1, 0) <= elem(&2, 0)))
+      |> Enum.map(&epicurve/1)
+      |> append_boundaries(data)
+    )
+  end
+
+  defp epicurve({location, data}) do
+    title = if(is_integer(location), do: MS.Locations.name(location), else: location)
+
+    [title: title, height: 150, width: 150]
+    |> VegaLite.new()
+    |> VegaLite.data_from_values(data)
+    |> VegaLite.mark(:line, tooltip: true, point: true)
+    |> VegaLite.encode_field(:x, "date", type: :temporal, time_unit: :yearweek, title: "Data")
+    |> VegaLite.encode_field(:y, "value", type: :quantitative, aggregate: :mean, title: @label)
+  end
+
+  defp append_boundaries([state | cities], data) do
+    {boundary, non_boundary} =
+      Enum.reduce(data, {[], []}, fn item, {boundary, non_boundary} ->
+        if MS.Locations.is_boundary_city?(item.location) do
+          {[item | boundary], non_boundary}
+        else
+          {boundary, [item | non_boundary]}
+        end
+      end)
+
+    boundary =
+      boundary
+      |> Enum.group_by(& &1.date)
+      |> Enum.map(&boundary_sum/1)
+      |> boundary_epicurve("Fronteira")
+
+    non_boundary =
+      non_boundary
+      |> Enum.group_by(& &1.date)
+      |> Enum.map(&boundary_sum/1)
+      |> boundary_epicurve("Não-fronteira")
+
+    [state, boundary, non_boundary | cities]
+  end
+
+  defp boundary_sum({date, items}) do
+    {cases, population} =
+      Enum.reduce(items, {0, 0}, fn item, {c, p} -> {c + item.cases, p + item.population} end)
+
+    %{
+      date: date,
+      value: Float.round(cases / population * 100_000, 1)
+    }
+  end
+
+  defp boundary_epicurve(data, title), do: epicurve({title, data})
+end
+
+EpicurveIncidenceRate1.plot(paths)
+```
+
+<!-- livebook:{"branch_parent_index":2} -->
+
+## Epicurva de taxa de incidência 2
+
+```elixir
+defmodule EpicurveIncidenceRate2 do
+  @title "Epicurva de taxa de incidência"
+  @label "Taxa de incidência"
+
+  def plot(paths) do
+    %{na: cases1} = paths.esus_ve.cases
+    %{na: cases2} = paths.sivep.cases
+
+    :cases
+    |> prepare(cases1, cases2)
+    |> Enum.map(&parse/1)
+    |> epicurves()
+  end
+
+  defp prepare(key, csv_path1, csv_path2) do
+    today = Date.utc_today()
+
+    MS.extract_and_join_csvs(
+      csv_path1,
+      csv_path2,
+      &MS.Filter.before(&1, today),
+      [&MS.Parser.consolidation/2, MS.Parser.sum_age_groups_function(key)],
+      MS.Merger.sum_function(key)
+    )
+  end
+
+  defp parse(%{cases: cases, location: location} = item) do
+    population = MS.Populations.get(location)
+
+    %{
+      date: to_string(item.date),
+      location: location,
+      cases: cases,
+      population: population,
+      value: Float.round(cases / population * 100_000, 1)
+    }
+  end
+
+  def epicurves(data) do
+    [title: @title]
+    |> VegaLite.new()
+    |> VegaLite.concat(
+      data
+      |> Enum.group_by(& &1.location)
+      |> Enum.sort(&(elem(&1, 0) <= elem(&2, 0)))
+      |> Enum.map(&epicurve/1)
+      |> append_boundaries(data)
+    )
+  end
+
+  defp epicurve({location, data}) do
+    title = if(is_integer(location), do: MS.Locations.name(location), else: location)
+
+    [title: title, height: 150, width: 150]
+    |> VegaLite.new()
+    |> VegaLite.data_from_values(data)
+    |> VegaLite.mark(:line, tooltip: true, point: true)
+    |> VegaLite.encode_field(:x, "date", type: :temporal, time_unit: :yearweek, title: "Data")
+    |> VegaLite.encode_field(:y, "value", type: :quantitative, aggregate: :mean, title: @label)
+  end
+
+  defp append_boundaries([state | cities], data) do
+    {boundary, non_boundary} =
+      Enum.reduce(data, {[], []}, fn item, {boundary, non_boundary} ->
+        if MS.Locations.is_boundary_city?(item.location) do
+          {[item | boundary], non_boundary}
+        else
+          {boundary, [item | non_boundary]}
+        end
+      end)
+
+    boundary =
+      boundary
+      |> Enum.group_by(& &1.date)
+      |> Enum.map(&boundary_sum/1)
+      |> boundary_epicurve("Fronteira")
+
+    non_boundary =
+      non_boundary
+      |> Enum.group_by(& &1.date)
+      |> Enum.map(&boundary_sum/1)
+      |> boundary_epicurve("Não-fronteira")
+
+    [state, boundary, non_boundary | cities]
+  end
+
+  defp boundary_sum({date, items}) do
+    {cases, population} =
+      Enum.reduce(items, {0, 0}, fn item, {c, p} -> {c + item.cases, p + item.population} end)
+
+    %{
+      date: date,
+      value: Float.round(cases / population * 100_000, 1)
+    }
+  end
+
+  defp boundary_epicurve(data, title), do: epicurve({title, data})
+end
+
+EpicurveIncidenceRate2.plot(paths)
+```
+
+<!-- livebook:{"branch_parent_index":2} -->
+
+## Epicurva em Gráfico de Área Agrupada: Casos
 
 ```elixir
 defmodule CasesVaccineNoVaccine do
@@ -282,8 +764,8 @@ defmodule CasesVaccineNoVaccine do
     |> VegaLite.new()
     |> VegaLite.data_from_values(data)
     |> VegaLite.mark(:area, tooltip: true)
-    |> VegaLite.encode_field(:x, "date", type: :temporal, title: "Data")
-    |> VegaLite.encode_field(:y, "value", type: :quantitative, title: @label)
+    |> VegaLite.encode_field(:x, "date", type: :temporal, time_unit: :yearweek, title: "Data")
+    |> VegaLite.encode_field(:y, "value", type: :quantitative, aggregate: :mean, title: @label)
     |> VegaLite.encode_field(:color, "key", type: :nominal, title: "Tipo")
   end
 end
@@ -293,7 +775,7 @@ CasesVaccineNoVaccine.plot(paths)
 
 <!-- livebook:{"branch_parent_index":2} -->
 
-## Internações entre vacinados e não vacinados
+## Epicurva em Gráfico de Área Agrupada: Internações
 
 ```elixir
 defmodule HospitalizationsVaccineNoVaccine do
@@ -331,8 +813,8 @@ defmodule HospitalizationsVaccineNoVaccine do
     |> VegaLite.new()
     |> VegaLite.data_from_values(data)
     |> VegaLite.mark(:area, tooltip: true)
-    |> VegaLite.encode_field(:x, "date", type: :temporal, title: "Data")
-    |> VegaLite.encode_field(:y, "value", type: :quantitative, title: @label)
+    |> VegaLite.encode_field(:x, "date", type: :temporal, time_unit: :yearweek, title: "Data")
+    |> VegaLite.encode_field(:y, "value", type: :quantitative, aggregate: :mean, title: @label)
     |> VegaLite.encode_field(:color, "key", type: :nominal, title: "Tipo")
   end
 
@@ -344,7 +826,7 @@ HospitalizationsVaccineNoVaccine.plot(paths)
 
 <!-- livebook:{"branch_parent_index":2} -->
 
-## Óbitos entre vacinados e não vacinados
+## Epicurva em Gráfico de Área Agrupada: Óbitos
 
 ```elixir
 defmodule DeathsVaccineNoVaccine do
@@ -382,8 +864,8 @@ defmodule DeathsVaccineNoVaccine do
     |> VegaLite.new()
     |> VegaLite.data_from_values(data)
     |> VegaLite.mark(:area, tooltip: true)
-    |> VegaLite.encode_field(:x, "date", type: :temporal, title: "Data")
-    |> VegaLite.encode_field(:y, "value", type: :quantitative, title: @label)
+    |> VegaLite.encode_field(:x, "date", type: :temporal, time_unit: :yearweek, title: "Data")
+    |> VegaLite.encode_field(:y, "value", type: :quantitative, aggregate: :mean, title: @label)
     |> VegaLite.encode_field(:color, "key", type: :nominal, title: "Tipo")
   end
 
@@ -391,4 +873,404 @@ defmodule DeathsVaccineNoVaccine do
 end
 
 DeathsVaccineNoVaccine.plot(paths)
+```
+
+<!-- livebook:{"branch_parent_index":2} -->
+
+## Distribuição em Gráfico de Barra: Casos
+
+```elixir
+defmodule CasesVaccineNoVaccineBar do
+  @title "Casos entre vacinados e não vacinados"
+  @label "Casos"
+
+  def plot(paths) do
+    %{guarded: guarded1, no_vaccine: no_vaccine1} = paths.esus_ve.cases
+    %{guarded: guarded2, no_vaccine: no_vaccine2} = paths.sivep.cases
+
+    guarded =
+      guarded1
+      |> prepare(guarded2)
+      |> Enum.flat_map(&flat_map/1)
+      |> sum_age_groups("Vacinado")
+
+    no_vaccine =
+      no_vaccine1
+      |> prepare(no_vaccine2)
+      |> Enum.flat_map(&flat_map/1)
+      |> sum_age_groups("Não-vacinado")
+
+    grouped_bar(guarded ++ no_vaccine)
+  end
+
+  defp prepare(csv_path1, csv_path2) do
+    today = Date.utc_today()
+
+    MS.extract_and_join_csvs(
+      csv_path1,
+      csv_path2,
+      fn map -> MS.Filter.state(map) and MS.Filter.before(map, today) end,
+      &MS.Parser.consolidation/2,
+      &merge/2
+    )
+  end
+
+  defp merge(i1, i2) do
+    i1.age_groups
+    |> Enum.zip(i2.age_groups)
+    |> Enum.map(fn {{age_group, v1}, {_, v2}} -> {age_group, v1 + v2} end)
+    |> then(&Map.put(i1, :age_groups, &1))
+  end
+
+  defp flat_map(item) do
+    Enum.map(item.age_groups, fn {age_group, value} ->
+      %{age_group: age_group, value: value}
+    end)
+  end
+
+  defp sum_age_groups(data, key) do
+    data
+    |> Enum.group_by(& &1.age_group)
+    |> Enum.map(fn {age_group, items} ->
+      %{key: key, age_group: age_group, value: Enum.reduce(items, 0, &(&1.value + &2))}
+    end)
+    |> Enum.sort(&(&1.age_group <= &2.age_group))
+  end
+
+  def grouped_bar(data) do
+    [title: @title, width: 100, height: 300]
+    |> VegaLite.new()
+    |> VegaLite.data_from_values(data)
+    |> VegaLite.mark(:bar, tooltip: true)
+    |> VegaLite.encode_field(:column, "age_group", title: "Faixa etária")
+    |> VegaLite.encode_field(:x, "key", title: "Tipo")
+    |> VegaLite.encode_field(:color, "key")
+    |> VegaLite.encode_field(:y, "value", type: :quantitative, title: @label)
+  end
+end
+
+CasesVaccineNoVaccineBar.plot(paths)
+```
+
+<!-- livebook:{"branch_parent_index":2} -->
+
+## Distribuição em Gráfico de Barra: Internações
+
+```elixir
+defmodule HospitalizationsVaccineNoVaccineBar do
+  @title "Internações entre vacinados e não vacinados"
+  @label "Internações"
+
+  def plot(paths) do
+    %{guarded: guarded, no_vaccine: no_vaccine} = paths.sivep.hospitalizations
+
+    guarded =
+      guarded
+      |> prepare()
+      |> Enum.flat_map(&flat_map/1)
+      |> sum_age_groups("Vacinado")
+
+    no_vaccine =
+      no_vaccine
+      |> prepare()
+      |> Enum.flat_map(&flat_map/1)
+      |> sum_age_groups("Não-vacinado")
+
+    grouped_bar(guarded ++ no_vaccine)
+  end
+
+  defp prepare(csv_path) do
+    today = Date.utc_today()
+
+    MS.parse_csv(
+      csv_path,
+      fn map -> MS.Filter.state(map) and MS.Filter.before(map, today) end,
+      &MS.Parser.consolidation/2
+    )
+  end
+
+  defp flat_map(item) do
+    Enum.map(item.age_groups, fn {age_group, value} ->
+      %{age_group: age_group, value: value}
+    end)
+  end
+
+  defp sum_age_groups(data, key) do
+    data
+    |> Enum.group_by(& &1.age_group)
+    |> Enum.map(fn {age_group, items} ->
+      %{key: key, age_group: age_group, value: Enum.reduce(items, 0, &(&1.value + &2))}
+    end)
+    |> Enum.sort(&(&1.age_group <= &2.age_group))
+  end
+
+  def grouped_bar(data) do
+    [title: @title, width: 100, height: 300]
+    |> VegaLite.new()
+    |> VegaLite.data_from_values(data)
+    |> VegaLite.mark(:bar, tooltip: true)
+    |> VegaLite.encode_field(:column, "age_group", title: "Faixa etária")
+    |> VegaLite.encode_field(:x, "key", title: "Tipo")
+    |> VegaLite.encode_field(:color, "key")
+    |> VegaLite.encode_field(:y, "value", type: :quantitative, title: @label)
+  end
+end
+
+HospitalizationsVaccineNoVaccineBar.plot(paths)
+```
+
+<!-- livebook:{"branch_parent_index":2} -->
+
+## Distribuição em Gráfico de Barra: Óbitos
+
+```elixir
+defmodule DeathsVaccineNoVaccineBar do
+  @title "Óbitos entre vacinados e não vacinados"
+  @label "Óbitos"
+
+  def plot(paths) do
+    %{guarded: guarded, no_vaccine: no_vaccine} = paths.sivep.deaths
+
+    guarded =
+      guarded
+      |> prepare()
+      |> Enum.flat_map(&flat_map/1)
+      |> sum_age_groups("Vacinado")
+
+    no_vaccine =
+      no_vaccine
+      |> prepare()
+      |> Enum.flat_map(&flat_map/1)
+      |> sum_age_groups("Não-vacinado")
+
+    grouped_bar(guarded ++ no_vaccine)
+  end
+
+  defp prepare(csv_path) do
+    today = Date.utc_today()
+
+    MS.parse_csv(
+      csv_path,
+      fn map -> MS.Filter.state(map) and MS.Filter.before(map, today) end,
+      &MS.Parser.consolidation/2
+    )
+  end
+
+  defp flat_map(item) do
+    Enum.map(item.age_groups, fn {age_group, value} ->
+      %{age_group: age_group, value: value}
+    end)
+  end
+
+  defp sum_age_groups(data, key) do
+    data
+    |> Enum.group_by(& &1.age_group)
+    |> Enum.map(fn {age_group, items} ->
+      %{key: key, age_group: age_group, value: Enum.reduce(items, 0, &(&1.value + &2))}
+    end)
+    |> Enum.sort(&(&1.age_group <= &2.age_group))
+  end
+
+  def grouped_bar(data) do
+    [title: @title, width: 100, height: 300]
+    |> VegaLite.new()
+    |> VegaLite.data_from_values(data)
+    |> VegaLite.mark(:bar, tooltip: true)
+    |> VegaLite.encode_field(:column, "age_group", title: "Faixa etária")
+    |> VegaLite.encode_field(:x, "key", title: "Tipo")
+    |> VegaLite.encode_field(:color, "key")
+    |> VegaLite.encode_field(:y, "value", type: :quantitative, title: @label)
+  end
+end
+
+DeathsVaccineNoVaccineBar.plot(paths)
+```
+
+<!-- livebook:{"branch_parent_index":2} -->
+
+## Tabela indicador de efetividade: Municípios
+
+```elixir
+defmodule EffectivenessIndicatorTableCities do
+  def show(paths) do
+    %{guarded: guarded_c1, no_vaccine: no_vaccine_c1} = paths.esus_ve.cases
+    %{guarded: guarded_c2, no_vaccine: no_vaccine_c2} = paths.sivep.cases
+    %{guarded: guarded_d, no_vaccine: no_vaccine_d} = paths.sivep.deaths
+    %{guarded: guarded_h, no_vaccine: no_vaccine_h} = paths.sivep.hospitalizations
+
+    guarded_c1
+    |> prepare_cases(guarded_c2, no_vaccine_c1, no_vaccine_c2)
+    |> prepare_deaths(guarded_d, no_vaccine_d)
+    |> prepare_hospitalizations(guarded_h, no_vaccine_h)
+    |> Enum.map(&Map.put(&1, :location, MS.Locations.name(&1.location)))
+    |> Enum.sort(&(&1.location <= &2.location))
+    |> Kino.DataTable.new(keys: [:location, :ev_cases, :ev_hospitalizations, :ev_deaths])
+  end
+
+  defp prepare_cases(guarded1, guarded2, no_vaccine1, no_vaccine2) do
+    guarded = merge(:guarded, guarded1, guarded2)
+    no_vaccine = merge(:no_vaccine, no_vaccine1, no_vaccine2)
+
+    Enum.group_by(guarded ++ no_vaccine, & &1.location)
+    |> Enum.map(fn
+      {location, [i1, i2]} -> %{location: location, ev_cases: ev(Map.merge(i1, i2))}
+      {location, _items} -> %{location: location, ev_cases: nil}
+    end)
+  end
+
+  defp merge(key, csv_path1, csv_path2) do
+    MS.extract_and_join_csvs(
+      csv_path1,
+      csv_path2,
+      fn map -> not MS.Filter.state(map) end,
+      [&MS.Parser.consolidation/2, MS.Parser.sum_age_groups_function(key)],
+      MS.Merger.sum_function(key)
+    )
+    |> Enum.group_by(& &1.location)
+    |> Enum.map(fn {location, items} ->
+      %{:location => location, key => Enum.reduce(items, 0, &(&1[key] + &2))}
+    end)
+  end
+
+  defp prepare_deaths(data, guarded, no_vaccine) do
+    Enum.group_by(csv(:guarded, guarded) ++ csv(:no_vaccine, no_vaccine), & &1.location)
+    |> Enum.map(fn
+      {location, [i1, i2]} -> %{location: location, ev_deaths: ev(Map.merge(i1, i2))}
+      {location, _items} -> %{location: location, ev_deaths: nil}
+    end)
+    |> Kernel.++(data)
+    |> Enum.group_by(& &1.location)
+    |> Enum.map(fn {_location, items} -> Enum.reduce(items, %{}, &Map.merge(&2, &1)) end)
+  end
+
+  defp prepare_hospitalizations(data, guarded, no_vaccine) do
+    Enum.group_by(csv(:guarded, guarded) ++ csv(:no_vaccine, no_vaccine), & &1.location)
+    |> Enum.map(fn
+      {location, [i1, i2]} -> %{location: location, ev_hospitalizations: ev(Map.merge(i1, i2))}
+      {location, _items} -> %{location: location, ev_hospitalizations: nil}
+    end)
+    |> Kernel.++(data)
+    |> Enum.group_by(& &1.location)
+    |> Enum.map(fn {_location, items} -> Enum.reduce(items, %{}, &Map.merge(&2, &1)) end)
+  end
+
+  defp csv(key, csv_path) do
+    MS.parse_csv(
+      csv_path,
+      fn map -> not MS.Filter.state(map) end,
+      [&MS.Parser.consolidation/2, MS.Parser.sum_age_groups_function(key)]
+    )
+    |> Enum.group_by(& &1.location)
+    |> Enum.map(fn {location, items} ->
+      %{:location => location, key => Enum.reduce(items, 0, &(&1[key] + &2))}
+    end)
+  end
+
+  defp ev(%{no_vaccine: no_vaccine, guarded: guarded}) do
+    Float.round((no_vaccine - guarded) / no_vaccine * 100, 1)
+  end
+end
+
+EffectivenessIndicatorTableCities.show(paths)
+```
+
+## Tabela indicador de efetividade: Estado
+
+```elixir
+defmodule EffectivenessIndicatorTableState do
+  def show(paths) do
+    %{guarded: guarded_c1, no_vaccine: no_vaccine_c1} = paths.esus_ve.cases
+    %{guarded: guarded_c2, no_vaccine: no_vaccine_c2} = paths.sivep.cases
+    %{guarded: guarded_d, no_vaccine: no_vaccine_d} = paths.sivep.deaths
+    %{guarded: guarded_h, no_vaccine: no_vaccine_h} = paths.sivep.hospitalizations
+
+    guarded_c1
+    |> prepare_cases(guarded_c2, no_vaccine_c1, no_vaccine_c2)
+    |> prepare_deaths(guarded_d, no_vaccine_d)
+    |> prepare_hospitalizations(guarded_h, no_vaccine_h)
+    |> Enum.sort(&(&1.age_group <= &2.age_group))
+    |> Kino.DataTable.new(keys: [:age_group, :ev_cases, :ev_hospitalizations, :ev_deaths])
+  end
+
+  defp prepare_cases(guarded1, guarded2, no_vaccine1, no_vaccine2) do
+    guarded = merge(:guarded, guarded1, guarded2)
+    no_vaccine = merge(:no_vaccine, no_vaccine1, no_vaccine2)
+
+    Enum.group_by(guarded ++ no_vaccine, & &1.age_group)
+    |> Enum.map(fn
+      {age_group, [i1, i2]} -> %{age_group: age_group, ev_cases: ev(Map.merge(i1, i2))}
+      {age_group, _items} -> %{age_group: age_group, ev_cases: nil}
+    end)
+  end
+
+  defp merge(key, csv_path1, csv_path2) do
+    d1 = csv(key, csv_path1)
+    d2 = csv(key, csv_path2)
+
+    d1
+    |> Kernel.++(d2)
+    |> Enum.group_by(& &1.age_group)
+    |> Enum.map(fn {age_group, items} ->
+      %{
+        :age_group => age_group,
+        key => Enum.reduce(items, 0, &(&1[key] + &2))
+      }
+    end)
+  end
+
+  defp prepare_deaths(data, guarded, no_vaccine) do
+    Enum.group_by(csv(:guarded, guarded) ++ csv(:no_vaccine, no_vaccine), & &1.age_group)
+    |> Enum.map(fn
+      {age_group, [i1, i2]} -> %{age_group: age_group, ev_deaths: ev(Map.merge(i1, i2))}
+      {age_group, _items} -> %{age_group: age_group, ev_deaths: nil}
+    end)
+    |> Kernel.++(data)
+    |> Enum.group_by(& &1.age_group)
+    |> Enum.map(fn {_age_group, items} -> Enum.reduce(items, %{}, &Map.merge(&2, &1)) end)
+  end
+
+  defp prepare_hospitalizations(data, guarded, no_vaccine) do
+    Enum.group_by(csv(:guarded, guarded) ++ csv(:no_vaccine, no_vaccine), & &1.age_group)
+    |> Enum.map(fn
+      {age_group, [i1, i2]} -> %{age_group: age_group, ev_hospitalizations: ev(Map.merge(i1, i2))}
+      {age_group, _items} -> %{age_group: age_group, ev_hospitalizations: nil}
+    end)
+    |> Kernel.++(data)
+    |> Enum.group_by(& &1.age_group)
+    |> Enum.map(fn {_age_group, items} -> Enum.reduce(items, %{}, &Map.merge(&2, &1)) end)
+  end
+
+  defp csv(key, csv_path) do
+    MS.parse_csv(
+      csv_path,
+      &MS.Filter.state/1,
+      &MS.Parser.consolidation/2
+    )
+    |> Enum.flat_map(&flat_map(&1, key))
+    |> Enum.group_by(& &1.age_group)
+    |> Enum.map(fn {age_group, items} ->
+      %{:age_group => age_group, key => Enum.reduce(items, 0, &(&1[key] + &2))}
+    end)
+  end
+
+  defp flat_map(%{age_groups: age_groups}, key) do
+    data = Enum.map(age_groups, fn {k, v} -> %{:age_group => k, key => v} end)
+    all = %{:age_group => :all, key => Enum.reduce(data, 0, &(&1[key] + &2))}
+
+    a15_39 = %{
+      :age_group => :a15_39,
+      key =>
+        Enum.filter(data, &(&1.age_group in ~w[a15_29 a30_39]a))
+        |> Enum.reduce(0, &(&1[key] + &2))
+    }
+
+    [all, a15_39 | data]
+  end
+
+  defp ev(%{no_vaccine: no_vaccine, guarded: guarded}) do
+    Float.round((no_vaccine - guarded) / no_vaccine * 100, 1)
+  end
+end
+
+EffectivenessIndicatorTableState.show(paths)
 ```
